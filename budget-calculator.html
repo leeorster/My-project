@@ -1,0 +1,226 @@
+<title>מחשבון חלוקת הכנסה</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;700&family=Assistant:wght@400;600&display=swap">
+<style>
+  /* Layout: one column ledger — inputs card on top, stacked split bar, then category rows, then monthly history */
+  :root {
+    --bg: #f3f5f2;
+    --surface: #ffffff;
+    --fg: #1d2a26;
+    --muted: #5f6e69;
+    --line: #dde3df;
+    --accent: #1f6f5c;
+    --warn: #b4482f;
+    --c1: #1f6f5c; /* מחייה */
+    --c2: #d08a2b; /* בילויים */
+    --c3: #a8554a; /* לא מתוכנן */
+    --c4: #3d6ea8; /* חיסכון */
+    --c5: #6b7f2e; /* צמיחה */
+    --font-display: "Rubik", "Arial Hebrew", Arial, sans-serif;
+    --font-body: "Assistant", "Arial Hebrew", Arial, sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #121816; --surface: #1b2320; --fg: #e6ece9; --muted: #9aa9a3; --line: #2c3833;
+      --accent: #4fb89c; --warn: #e58468;
+      --c1: #4fb89c; --c2: #e6a650; --c3: #d9806f; --c4: #6f9fd8; --c5: #a2b85a;
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #121816; --surface: #1b2320; --fg: #e6ece9; --muted: #9aa9a3; --line: #2c3833;
+    --accent: #4fb89c; --warn: #e58468;
+    --c1: #4fb89c; --c2: #e6a650; --c3: #d9806f; --c4: #6f9fd8; --c5: #a2b85a;
+    color-scheme: dark;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    background: var(--bg); color: var(--fg);
+    font-family: var(--font-body); font-size: 16px; line-height: 1.5;
+    padding-left: max(16px, env(safe-area-inset-left, 0px));
+    padding-right: max(16px, env(safe-area-inset-right, 0px));
+    padding-block: 28px 48px;
+  }
+  .wrap { max-width: 680px; margin: 0 auto; display: grid; gap: 22px; }
+  h1, h2 { font-family: var(--font-display); text-wrap: balance; margin: 0; }
+  h1 { font-size: 1.7rem; font-weight: 700; }
+  h2 { font-size: 1.1rem; font-weight: 500; }
+  .sub { color: var(--muted); margin: 4px 0 0; }
+  .num { font-family: var(--font-display); font-variant-numeric: tabular-nums; }
+
+  .card { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 20px; }
+
+  .inputs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+  @media (max-width: 560px) { .inputs { grid-template-columns: 1fr; } }
+  label { display: grid; gap: 6px; font-weight: 600; font-size: .92rem; }
+  label small { color: var(--muted); font-weight: 400; }
+  input {
+    font: inherit; font-family: var(--font-display); font-size: 1.1rem;
+    padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px;
+    background: var(--bg); color: var(--fg); width: 100%; min-width: 0;
+  }
+  input:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  .total { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 8px;
+           margin-top: 18px; padding-top: 16px; border-top: 1px dashed var(--line); }
+  .total .label { color: var(--muted); }
+  .total .value { font-size: 2rem; font-weight: 700; }
+  .warn { color: var(--warn); font-weight: 600; margin: 10px 0 0; }
+
+  .bar { display: flex; height: 14px; border-radius: 7px; overflow: hidden; gap: 2px; }
+  .bar span { display: block; }
+
+  .rows { display: grid; gap: 0; }
+  .row { display: grid; grid-template-columns: 12px 1fr auto; gap: 12px; align-items: center;
+         padding: 14px 0; border-bottom: 1px solid var(--line); }
+  .row:last-child { border-bottom: 0; }
+  .dot { width: 12px; height: 12px; border-radius: 3px; }
+  .row .name { font-weight: 600; }
+  .row .desc { color: var(--muted); font-size: .88rem; }
+  .row .amt { text-align: left; font-size: 1.25rem; font-weight: 500; }
+  .row .pct { display: block; color: var(--muted); font-size: .8rem; font-weight: 400; }
+
+  .actions { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+  button {
+    font: inherit; font-weight: 600; cursor: pointer; border-radius: 8px; padding: 10px 16px;
+    border: 1px solid var(--accent); background: var(--accent); color: var(--surface);
+  }
+  button.ghost { background: transparent; color: var(--accent); }
+  button.link { border: 0; background: none; color: var(--muted); padding: 4px 6px; font-weight: 400; }
+  .toast { color: var(--accent); font-weight: 600; }
+
+  .hist { width: 100%; border-collapse: collapse; font-size: .92rem; }
+  .hist-wrap { overflow-x: auto; }
+  .hist th, .hist td { padding: 8px 6px; text-align: right; border-bottom: 1px solid var(--line); white-space: nowrap; }
+  .hist th { color: var(--muted); font-weight: 600; font-size: .82rem; }
+  .hist td.n { font-family: var(--font-display); font-variant-numeric: tabular-nums; text-align: left; }
+  .empty { color: var(--muted); margin: 8px 0 0; }
+  .note { color: var(--muted); font-size: .82rem; margin: 10px 0 0; }
+</style>
+
+<div class="wrap" dir="rtl" lang="he">
+  <header>
+    <h1>מחשבון חלוקת הכנסה</h1>
+    <p class="sub">מזינים יתרה בעו״ש ומשכורת צפויה, והסכום מתחלק לפי 55 / 5 / 10 / 15 / 15.</p>
+  </header>
+
+  <section class="card">
+    <div class="inputs">
+      <label for="month">חודש
+        <input id="month" type="month">
+      </label>
+      <label for="balance">יתרה בעו״ש <small>(אפשר מינוס)</small>
+        <input id="balance" type="number" inputmode="decimal" step="any" value="4200">
+      </label>
+      <label for="salary">משכורת צפויה
+        <input id="salary" type="number" inputmode="decimal" step="any" min="0" value="14500">
+      </label>
+    </div>
+    <div class="total">
+      <span class="label">סה״כ לחלוקה</span>
+      <span class="value num" id="total">—</span>
+    </div>
+    <p class="warn" id="warn" hidden>הסכום לחלוקה אפס או שלילי. היתרה בעו״ש מכסה את כל המשכורת.</p>
+  </section>
+
+  <section class="card" style="display:grid; gap:14px;">
+    <h2>החלוקה החודשית</h2>
+    <div class="bar" id="bar" aria-hidden="true"></div>
+    <div class="rows" id="rows"></div>
+  </section>
+
+  <section class="card" style="display:grid; gap:12px;">
+    <div class="actions">
+      <button id="save" type="button">שמירת החודש בהיסטוריה</button>
+      <span class="toast" id="toast" role="status"></span>
+    </div>
+    <h2>היסטוריה</h2>
+    <div class="hist-wrap" id="histWrap"></div>
+    <p class="note">ההיסטוריה נשמרת בדפדפן הזה בלבד. ניקוי נתוני הדפדפן ימחק אותה.</p>
+  </section>
+</div>
+
+<script>
+  const CATS = [
+    { key: "living",  name: "מחייה",          desc: "מגורים, סופר ואחזקת רכב", pct: 55, color: "var(--c1)" },
+    { key: "fun",     name: "בילויים",        desc: "יציאות, מסעדות, פנאי",     pct: 5,  color: "var(--c2)" },
+    { key: "unplan",  name: "הוצאות לא מתוכננות", desc: "תיקונים, מתנות, הפתעות", pct: 10, color: "var(--c3)" },
+    { key: "save",    name: "חיסכון",         desc: "כרית ביטחון",              pct: 15, color: "var(--c4)" },
+    { key: "growth",  name: "צמיחה",          desc: "השקעות, לימודים, התפתחות", pct: 15, color: "var(--c5)" },
+  ];
+  const STORE = "budget-split-v1";
+  const $ = id => document.getElementById(id);
+  const fmt = n => new Intl.NumberFormat("he-IL", { style: "currency", currency: "ILS", maximumFractionDigits: 0 }).format(n);
+
+  function load() { try { return JSON.parse(localStorage.getItem(STORE)) || {}; } catch { return {}; } }
+  function persist(s) { try { localStorage.setItem(STORE, JSON.stringify(s)); } catch {} }
+  let state = load();
+  state.history = state.history || {};
+
+  const now = new Date();
+  $("month").value = state.month || `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+  if (state.balance != null) $("balance").value = state.balance;
+  if (state.salary != null) $("salary").value = state.salary;
+
+  function split(total) { return CATS.map(c => ({ ...c, amount: Math.max(total, 0) * c.pct / 100 })); }
+  function monthLabel(m) {
+    const [y, mo] = m.split("-").map(Number);
+    return new Intl.DateTimeFormat("he-IL", { month: "long", year: "numeric" }).format(new Date(y, mo - 1, 1));
+  }
+
+  function render() {
+    const balance = parseFloat($("balance").value) || 0;
+    const salary = parseFloat($("salary").value) || 0;
+    const total = balance + salary;
+    $("total").textContent = fmt(total);
+    $("warn").hidden = total > 0;
+
+    const parts = split(total);
+    $("bar").innerHTML = parts.map(p => `<span style="flex:${p.pct};background:${p.color}"></span>`).join("");
+    $("rows").innerHTML = parts.map(p => `
+      <div class="row">
+        <span class="dot" style="background:${p.color}"></span>
+        <div><div class="name">${p.name}</div><div class="desc">${p.desc}</div></div>
+        <div class="amt num">${fmt(p.amount)}<span class="pct">${p.pct}%</span></div>
+      </div>`).join("");
+
+    state.month = $("month").value; state.balance = $("balance").value; state.salary = $("salary").value;
+    persist(state);
+  }
+
+  function renderHistory() {
+    const months = Object.keys(state.history).sort().reverse();
+    if (!months.length) { $("histWrap").innerHTML = `<p class="empty">עוד לא נשמרו חודשים. אחרי שמזינים את המספרים, לוחצים על "שמירת החודש בהיסטוריה".</p>`; return; }
+    $("histWrap").innerHTML = `<table class="hist"><thead><tr>
+        <th>חודש</th><th>סה״כ</th>${CATS.map(c => `<th>${c.name}</th>`).join("")}<th></th>
+      </tr></thead><tbody>${months.map(m => {
+        const h = state.history[m];
+        return `<tr><td>${monthLabel(m)}</td><td class="n">${fmt(h.total)}</td>
+          ${split(h.total).map(p => `<td class="n">${fmt(p.amount)}</td>`).join("")}
+          <td><button class="link" type="button" data-del="${m}">מחיקה</button></td></tr>`;
+      }).join("")}</tbody></table>`;
+  }
+
+  $("histWrap").addEventListener("click", e => {
+    const m = e.target.dataset.del;
+    if (!m) return;
+    delete state.history[m]; persist(state); renderHistory();
+  });
+
+  let toastTimer;
+  $("save").addEventListener("click", () => {
+    const m = $("month").value;
+    if (!m) { $("toast").textContent = "בחרו חודש לפני השמירה"; return; }
+    const balance = parseFloat($("balance").value) || 0;
+    const salary = parseFloat($("salary").value) || 0;
+    state.history[m] = { balance, salary, total: balance + salary };
+    persist(state); renderHistory();
+    $("toast").textContent = `${monthLabel(m)} נשמר`;
+    clearTimeout(toastTimer); toastTimer = setTimeout(() => $("toast").textContent = "", 2500);
+  });
+
+  ["month", "balance", "salary"].forEach(id => $(id).addEventListener("input", render));
+  render(); renderHistory();
+</script>
